@@ -15,6 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 
+
 def deriv_dnw(xx, hh, **kwargs):
     """
     Returns the downwind 2nd order derivative of hh array respect to xx array. 
@@ -32,6 +33,20 @@ def deriv_dnw(xx, hh, **kwargs):
         The downwind 2nd order derivative of hh respect to xx. Last 
         grid point is ill (or missing) calculated. 
     """
+    N = len(xx)
+    x = np.zeros(N)
+    xh = np.zeros(N)
+
+    y = np.zeros(N)
+
+    xh[0] = xx[0] - 0.5*(xx[1] - xx[0])
+
+    y[0] = hh(xh[0])
+    for i in range(N-1):
+            xh[i] = 0.5*(xx[i] + xx[i+1])
+            y[i] = hh(xh[i])
+    return y
+    
 
 
 def order_conv(hh, hh2, hh4, **kwargs):
