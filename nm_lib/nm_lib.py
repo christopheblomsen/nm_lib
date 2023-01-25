@@ -44,6 +44,7 @@ def deriv_dnw(xx, hh, **kwargs):
         y[i + 1] = (hh(xx[i + 1]) - hh(xx[i])) / (xx[i + 1] - xx[i])
 
     xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
+    y[-1] = hh(xh[-1])
     return y
 
 
@@ -130,6 +131,10 @@ def step_adv_burgers(
         Time interval.
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
+    dt = cfl_cut * cfl_adv_burger(a, xx)
+    u_new = hh(xx) - a * ddx(xx, hh) * dt
+
+    return dt, u_new
 
 
 def cfl_adv_burger(a, x):
@@ -149,6 +154,8 @@ def cfl_adv_burger(a, x):
     `float`
         min(dx/|a|)
     """
+    dx = x[1] - x[0]
+    return np.min(dx / abs(a))
 
 
 def evolv_adv_burgers(
@@ -197,6 +204,25 @@ def evolv_adv_burgers(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+
+    N = len(xx)
+
+    unnt = np.zeros((N, nt))
+    unnt[0, :] = step_adv_burgers(xx, hh, a)
+
+    # boundaries
+    unnt = np.pad(unnt, bnd_limits, bnd_type)
+
+    t = np.zeros(N)
+
+    for i in range(1, nt):
+        dt, tmp = step_adv_burgers(xx, hh, a)
+        time = i * dt
+        t[i] = time
+        unnt[i, :] = tmp
+        unnt = np.pad(unnt, bnd_limits, bnd_type)
+
+    return t, unnt
 
 
 def deriv_upw(xx, hh, **kwargs):
