@@ -29,22 +29,27 @@ def deriv_dnw(xx, hh, **kwargs):
         The downwind 2nd order derivative of hh respect to xx. Last
         grid point is ill (or missing) calculated.
     """
-
+    # Using the roll method
+    """
+    y = ((np.roll(hh, 1) - np.roll(hh, 0))
+        /(np.roll(xx, 1) - np.roll(xx, 0)))
+    """
+    # Using the classical method
     N = len(xx)
     xh = np.zeros(N)
 
     y = np.zeros(N)
 
     xh[0] = xx[0] - 0.5 * (xx[1] - xx[0])
-    y[0] = hh(xh[0])
+    y[0] = hh[0]
 
     for i in range(N - 1):
         xh[i + 1] = 0.5 * (xx[i + 1] + xx[i])
 
-        y[i + 1] = (hh(xx[i + 1]) - hh(xx[i])) / (xx[i + 1] - xx[i])
+        y[i + 1] = (hh[i + 1] - hh[i]) / (xx[i + 1] - xx[i])
 
     xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
-    y[-1] = hh(xh[-1])
+    y[-1] = hh[-1]
     return y
 
 
@@ -87,15 +92,16 @@ def deriv_4tho(xx, hh, **kwargs):
     N = len(xx)
     y = np.zeros(N)
 
-    dx = xx[1] - xx[0]
+    dx = np.gradient(xx)
 
-    y[0] = hh(xx[0])
-    y[1] = hh(xx[1])
+    y[0] = hh[0]
+    y[1] = hh[1]
 
     for i in range(2, N - 2):
-        num = hh(xx[i - 2]) - 8 * hh(xx[i - 1]) + 8 * hh(xx[i + 1]) - hh(xx[i + 2])
+        num = hh[i - 2] - 8 * hh[i - 1] + 8 * hh[i + 1] - hh[i + 2]
         den = 12 * dx
         y[i] = num / den
+
     return y
 
 
@@ -132,7 +138,7 @@ def step_adv_burgers(
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
     dt = cfl_cut * cfl_adv_burger(a, xx)
-    u_new = hh(xx) - a * ddx(xx, hh) * dt
+    u_new = a * ddx(xx, hh)
 
     return dt, u_new
 
@@ -154,7 +160,7 @@ def cfl_adv_burger(a, x):
     `float`
         min(dx/|a|)
     """
-    dx = x[1] - x[0]
+    dx = np.gradient(x)
     return np.min(dx / abs(a))
 
 
@@ -204,23 +210,20 @@ def evolv_adv_burgers(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
-
-    N = len(xx)
+    N = np.size(xx)
 
     unnt = np.zeros((N, nt))
-    unnt[0, :] = step_adv_burgers(xx, hh, a)
+    unnt[:, 0] = hh
 
-    # boundaries
-    unnt = np.pad(unnt, bnd_limits, bnd_type)
+    t = np.zeros(nt)
 
-    t = np.zeros(N)
-
-    for i in range(1, nt):
-        dt, tmp = step_adv_burgers(xx, hh, a)
-        time = i * dt
-        t[i] = time
-        unnt[i, :] = tmp
-        unnt = np.pad(unnt, bnd_limits, bnd_type)
+    for i in range(0, nt - 1):
+        dt, tmp = step_adv_burgers(xx, unnt[:, i], a)
+        t[i + 1] = t[i] + dt
+        tmmp = unnt[:, i] - tmp * dt
+        unnt[:, i + 1] = np.pad(
+            tmmp[bnd_limits[0] : -bnd_limits[1]], bnd_limits, bnd_type
+        )
 
     return t, unnt
 
@@ -242,6 +245,16 @@ def deriv_upw(xx, hh, **kwargs):
         The upwind 2nd order derivative of hh respect to xx. First
         grid point is ill calculated.
     """
+    N = len(xx)
+    xh = np.zeros(N)
+    y = np.zeros(N)
+
+    xh[0] = xx[0] - 0.5 * (xx[1] - xx[0])
+    y[0] = hh[0]
+
+    for i in range(1, N):
+        xh[i] = 0.5 * (xx[i] + xx[i - 1])
+        y[i]
 
 
 def deriv_cent(xx, hh, **kwargs):
