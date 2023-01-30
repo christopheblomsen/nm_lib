@@ -30,9 +30,7 @@ def deriv_dnw(xx, hh, **kwargs):
         grid point is ill (or missing) calculated.
     """
     # Using the roll method
-    """
-    y = ((np.roll(hh, 1) - np.roll(hh, 0))
-        /(np.roll(xx, 1) - np.roll(xx, 0)))
+    y = (np.roll(hh, 0) - np.roll(hh, 1)) / (np.roll(xx, 0) - np.roll(xx, 1))
     """
     # Using the classical method
     N = len(xx)
@@ -50,6 +48,7 @@ def deriv_dnw(xx, hh, **kwargs):
 
     xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
     y[-1] = hh[-1]
+    """
     return y
 
 
@@ -70,6 +69,7 @@ def order_conv(hh, hh2, hh4, **kwargs):
     `array`
         The order of convergence.
     """
+    return np.ma.log2((hh4[::4] - hh2[::2])/(hh2[::2] - hh))
 
 
 def deriv_4tho(xx, hh, **kwargs):
@@ -92,15 +92,14 @@ def deriv_4tho(xx, hh, **kwargs):
     N = len(xx)
     y = np.zeros(N)
 
-    dx = np.gradient(xx)
+    # dx = np.gradient(xx)
+    dx = xx[1] - xx[0]
 
     y[0] = hh[0]
     y[1] = hh[1]
 
     for i in range(2, N - 2):
-        num = hh[i - 2] - 8 * hh[i - 1] + 8 * hh[i + 1] - hh[i + 2]
-        den = 12 * dx
-        y[i] = num / den
+        y[i] = (hh[i - 2] - 8 * hh[i - 1] + 8 * hh[i + 1] - hh[i + 2]) / (12 * dx)
 
     return y
 
@@ -173,7 +172,7 @@ def evolv_adv_burgers(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a a fix constant or array.
@@ -218,12 +217,17 @@ def evolv_adv_burgers(
     t = np.zeros(nt)
 
     for i in range(0, nt - 1):
-        dt, tmp = step_adv_burgers(xx, unnt[:, i], a)
+        dt, tmp = step_adv_burgers(xx, unnt[:, i], a, cfl_cut=cfl_cut, ddx=ddx)
         t[i + 1] = t[i] + dt
         tmmp = unnt[:, i] - tmp * dt
-        unnt[:, i + 1] = np.pad(
-            tmmp[bnd_limits[0] : -bnd_limits[1]], bnd_limits, bnd_type
-        )
+        # For upwind and centre
+        if bnd_limits[1] > 0:
+            unnt[:, i + 1] = np.pad(
+                tmmp[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+        # For downwind
+        else:
+            unnt[:, i + 1] = np.pad(tmmp[bnd_limits[0]:], bnd_limits, bnd_type)
 
     return t, unnt
 
@@ -245,16 +249,27 @@ def deriv_upw(xx, hh, **kwargs):
         The upwind 2nd order derivative of hh respect to xx. First
         grid point is ill calculated.
     """
+    # Using the classical method
+    """
     N = len(xx)
     xh = np.zeros(N)
+
     y = np.zeros(N)
 
     xh[0] = xx[0] - 0.5 * (xx[1] - xx[0])
     y[0] = hh[0]
 
-    for i in range(1, N):
-        xh[i] = 0.5 * (xx[i] + xx[i - 1])
-        y[i]
+    for i in range(N):
+        #xh[i + 1] = 0.5 * (xx[i + 1] + xx[i])
+
+        y[i] = (hh[i] - hh[i-1]) / (xx[i] - xx[i - 1])
+
+    xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
+    y[-1] = hh[-1]
+    """
+    # Using the roll method
+    y = (np.roll(hh, 0) - np.roll(hh, 1)) / (np.roll(xx, 0) - np.roll(xx, 1))
+    return y
 
 
 def deriv_cent(xx, hh, **kwargs):
@@ -274,6 +289,7 @@ def deriv_cent(xx, hh, **kwargs):
         The centered 2nd order derivative of hh respect to xx. First
         and last grid points are ill calculated.
     """
+    return (np.roll(hh, -1) - np.roll(hh, 1)) / (2 * (np.roll(xx, -1) - np.roll(xx, 1)))
 
 
 def evolv_uadv_burgers(
@@ -284,7 +300,7 @@ def evolv_uadv_burgers(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being u.
@@ -330,7 +346,7 @@ def evolv_Lax_uadv_burgers(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being u using the Lax
@@ -378,7 +394,7 @@ def evolv_Lax_adv_burgers(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a a fix constant or
@@ -482,7 +498,7 @@ def ops_Lax_LL_Add(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a and b a fix
@@ -540,7 +556,7 @@ def ops_Lax_LL_Lie(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a and b a fix
@@ -597,7 +613,7 @@ def ops_Lax_LL_Strang(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a and b a fix
@@ -655,7 +671,7 @@ def osp_Lax_LH_Strang(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
     r"""
     Advance nt time-steps in time the burger eq for a being a and b a fix
@@ -825,7 +841,7 @@ def Newton_Raphson(
     unnt[:, 0] = hh
     t = np.zeros((nt))
 
-    ## Looping over time
+    # Looping over time
     for it in range(1, nt):
         uo = unnt[:, it - 1]
         ug = unnt[:, it - 1]
@@ -849,9 +865,9 @@ def Newton_Raphson(
 
             # Boundaries
             if bnd_limits[1] > 0:
-                u1_c = un[bnd_limits[0] : -bnd_limits[1]]
+                u1_c = un[bnd_limits[0]: -bnd_limits[1]]
             else:
-                u1_c = un[bnd_limits[0] :]
+                u1_c = un[bnd_limits[0]:]
             un = np.pad(u1_c, bnd_limits, bnd_type)
             ug = un
         err = 1.0
@@ -956,7 +972,7 @@ def Newton_Raphson_u(
     unnt[:, 0] = hh
     t = np.zeros((nt))
 
-    ## Looping over time
+    # Looping over time
     for it in range(1, nt):
         uo = unnt[:, it - 1]
         ug = unnt[:, it - 1]
@@ -979,9 +995,9 @@ def Newton_Raphson_u(
 
             # Boundaries
             if bnd_limits[1] > 0:
-                u1_c = un[bnd_limits[0] : -bnd_limits[1]]
+                u1_c = un[bnd_limits[0]: -bnd_limits[1]]
             else:
-                u1_c = un[bnd_limits[0] :]
+                u1_c = un[bnd_limits[0]:]
             un = np.pad(u1_c, bnd_limits, bnd_type)
             ug = un
         err = 1.0
@@ -1077,7 +1093,7 @@ def hyman(
     ddx=lambda x, y: deriv_dnw(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
-    **kwargs
+    **kwargs,
 ):
 
     dt, u1_temp = step_adv_burgers(xx, f, a, ddx=ddx)
@@ -1098,9 +1114,9 @@ def hyman(
         f, fold, fsav = hyman_pred(f, fold, u1_temp, a1, b1, a2, b2)
 
         if bnd_limits[1] > 0:
-            u1_c = f[bnd_limits[0] : -bnd_limits[1]]
+            u1_c = f[bnd_limits[0]: -bnd_limits[1]]
         else:
-            u1_c = f[bnd_limits[0] :]
+            u1_c = f[bnd_limits[0]:]
         f = np.pad(u1_c, bnd_limits, bnd_type)
 
         dt, u1_temp = step_adv_burgers(xx, f, a, cfl_cut, ddx=ddx)
@@ -1108,9 +1124,9 @@ def hyman(
         f = hyman_corr(f, fsav, u1_temp, c2)
 
     if bnd_limits[1] > 0:
-        u1_c = f[bnd_limits[0] : -bnd_limits[1]]
+        u1_c = f[bnd_limits[0]: -bnd_limits[1]]
     else:
-        u1_c = f[bnd_limits[0] :]
+        u1_c = f[bnd_limits[0]:]
     f = np.pad(u1_c, bnd_limits, bnd_type)
 
     dtold = dth
@@ -1130,3 +1146,52 @@ def hyman_pred(f, fold, dfdt, a1, b1, a2, b2):
     f = tempvar
 
     return f, fold, fsav
+
+
+def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5)):
+    """
+    Animates the functions.
+
+    Parameters
+    ----------
+    xx  :   `array`
+         Spatial array
+    ut  :   `array`
+         Numerical solution array
+    U   :   `array`
+         Analytical solution array
+    nt  :   `float` or `int`
+         number of time points
+    nrows : `int`
+         number of rows
+    ncols : `int`
+         number of cols
+    figsize : `tuple`
+         The figure size
+
+    Returns
+    -------
+    Animation
+    """
+    modulename = "matplotlib"
+    if modulename not in dir():
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+
+    def init():
+        axes.plot(xx, ut[:, 0], label=f"Numerical")
+        axes.plot(xx, U[:, 0], label=f"Analytical")
+        axes.legend()
+
+    def animate(i):
+
+        axes.clear()
+        axes.plot(xx, ut[:, i], label=f"Numerical")
+        axes.plot(xx, U[:, i], label=f"Analytical")
+        axes.legend()
+        axes.set_title("t=%.2f" % t[i])
+
+    anim = FuncAnimation(fig, animate, interval=1, frames=nt, init_func=init)
+    return anim
