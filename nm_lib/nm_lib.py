@@ -383,6 +383,28 @@ def evolv_Lax_uadv_burgers(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+
+    unnt = np.zeros((N, nt))
+    unnt[:, 0] = hh
+
+    t = np.zeros(nt)
+
+    for i in range(0, nt - 1):
+        dt, tmp = step_adv_burgers(xx, unnt[:, i], a, cfl_cut=cfl_cut, ddx=ddx)
+        t[i + 1] = t[i] + dt
+        term = np.roll(tmp, -1) + np.roll(tmp, 1)
+        tmmp = 0.5*term 
+        # For upwind and centre
+        if bnd_limits[1] > 0:
+            unnt[:, i + 1] = np.pad(
+                tmmp[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+        # For downwind
+        else:
+            unnt[:, i + 1] = np.pad(tmmp[bnd_limits[0]:], bnd_limits, bnd_type)
+
+    return t, unnt
 
 
 def evolv_Lax_adv_burgers(
