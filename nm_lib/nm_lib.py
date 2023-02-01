@@ -137,7 +137,7 @@ def step_adv_burgers(
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
     dt = cfl_cut * cfl_adv_burger(a, xx)
-    u_new = a * ddx(xx, hh)
+    u_new = a*ddx(xx, hh)
 
     return dt, u_new
 
@@ -160,7 +160,7 @@ def cfl_adv_burger(a, x):
         min(dx/|a|)
     """
     dx = np.gradient(x)
-    return np.min(dx / abs(a))
+    return np.min(dx / np.abs(a))
 
 
 def evolv_adv_burgers(
@@ -336,6 +336,27 @@ def evolv_uadv_burgers(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+
+    unnt = np.zeros((N, nt))
+    unnt[:, 0] = hh
+
+    t = np.zeros(nt)
+
+    for i in range(0, nt - 1):
+        dt, tmp = step_adv_burgers(xx, unnt[:, i], unnt[:, i], cfl_cut=cfl_cut, ddx=ddx)
+        t[i + 1] = t[i] + dt
+        tmmp = unnt[:, i] - tmp * dt
+        # For upwind and centre
+        if bnd_limits[1] > 0:
+            unnt[:, i + 1] = np.pad(
+                tmmp[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+        # For downwind
+        else:
+            unnt[:, i + 1] = np.pad(tmmp[bnd_limits[0]:], bnd_limits, bnd_type)
+
+    return t, unnt
 
 
 def evolv_Lax_uadv_burgers(
@@ -390,11 +411,17 @@ def evolv_Lax_uadv_burgers(
 
     t = np.zeros(nt)
 
+    dx = xx[1] - xx[0]
+
     for i in range(0, nt - 1):
-        dt, tmp = step_adv_burgers(xx, unnt[:, i], a, cfl_cut=cfl_cut, ddx=ddx)
+        #dx = np.gradient(xx)
+        #dt = np.min(dx/np.abs(unnt[:, i]))*cfl_cut
+        dt, tmp = step_adv_burgers(xx, hh=unnt[:, i], a=unnt[:, i], cfl_cut=cfl_cut, ddx=ddx)
         t[i + 1] = t[i] + dt
-        term = np.roll(tmp, -1) + np.roll(tmp, 1)
-        tmmp = 0.5*term 
+        term1 = np.roll(unnt[:, i], -1) + np.roll(unnt[:, i], 1)
+        term2 = np.roll(unnt[:, i], -1) - np.roll(unnt[:, i], 1)
+        frac = (unnt[:,i]*dt) / (2*dx)
+        tmmp = 0.5*term1 - frac*term2 
         # For upwind and centre
         if bnd_limits[1] > 0:
             unnt[:, i + 1] = np.pad(
@@ -1170,7 +1197,8 @@ def hyman_pred(f, fold, dfdt, a1, b1, a2, b2):
     return f, fold, fsav
 
 
-def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5)):
+def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5),
+                label_1="Numerical", label_2="Analytical"):
     """
     Animates the functions.
 
@@ -1187,7 +1215,7 @@ def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5)):
     nrows : `int`
          number of rows
     ncols : `int`
-         number of cols
+         number of cols 
     figsize : `tuple`
          The figure size
 
@@ -1203,15 +1231,15 @@ def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5)):
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
 
     def init():
-        axes.plot(xx, ut[:, 0], label=f"Numerical")
-        axes.plot(xx, U[:, 0], label=f"Analytical")
+        axes.plot(xx, ut[:, 0], label=label_1)
+        axes.plot(xx, U[:, 0], label=label_2)
         axes.legend()
 
     def animate(i):
 
         axes.clear()
-        axes.plot(xx, ut[:, i], label=f"Numerical")
-        axes.plot(xx, U[:, i], label=f"Analytical")
+        axes.plot(xx, ut[:, i], label=label_1)
+        axes.plot(xx, U[:, i], label=label_2)
         axes.legend()
         axes.set_title("t=%.2f" % t[i])
 
