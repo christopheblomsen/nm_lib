@@ -30,7 +30,7 @@ def deriv_dnw(xx, hh, **kwargs):
         grid point is ill (or missing) calculated.
     """
     # Using the roll method
-    y = (np.roll(hh, 0) - np.roll(hh, 1)) / (np.roll(xx, 0) - np.roll(xx, 1))
+    y = (np.roll(hh, -1) - np.roll(hh, 0)) / (np.roll(xx, -1) - np.roll(xx, 0))
     """
     # Using the classical method
     N = len(xx)
