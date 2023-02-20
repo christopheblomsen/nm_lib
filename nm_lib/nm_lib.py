@@ -517,6 +517,41 @@ def step_uadv_burgers(xx, hh, cfl_cut=0.98, ddx=lambda x, y: deriv_dnw(x, y), **
         right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
 
+def evolv_Rie_uadv_burgers(xx, 
+                           hh, 
+                           nt, 
+                           cfl_cut=0.98, 
+                           bnd_type="wrap",
+                           bnd_limits=[0, 1],
+                           **kwargs):
+    N = np.size(xx)
+
+    unnt = np.zeros((N, nt))
+    unnt[:, 0] = hh
+
+    
+    t = np.zeros(nt)
+    
+    for it in range(nt-1):
+        u_L = unnt[:-1, it]
+        u_R = unnt[1:, it]
+        F_R = .5*u_R**2
+        F_L = .5*u_L**2
+        va = np.max([np.abs(u_R), np.abs(u_L)], axis=0)
+        dx = xx[it+1] - xx[it-1]
+        dt = cfl_cut * cfl_adv_burger(va, xx)
+        rhs = .5*(F_R + F_L) - .5*va*(u_R - u_L)
+        tmp = unnt[:, it] - dt*(rhs - np.roll(rhs, 1))/dx
+        # For upwind and centre
+        if bnd_limits[1] > 0:
+            unnt[:, it + 1] = np.pad(
+                tmp[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+        # For downwind
+        else:
+            unnt[:, it + 1] = np.pad(tmp[bnd_limits[0]:], bnd_limits, bnd_type)
+        t[it+1] = t[it] + dt
+    return t, unnt
 
 def cfl_diff_burger(a, x):
     r"""
