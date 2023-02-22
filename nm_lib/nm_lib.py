@@ -524,32 +524,65 @@ def evolv_Rie_uadv_burgers(xx,
                            bnd_type="wrap",
                            bnd_limits=[0, 1],
                            **kwargs):
+    r"""
+    Right hand side of Burger's eq. where a is u, i.e hh.
+
+    Requires
+    --------
+        cfl_adv_burger function which computes np.min(dx/a)
+
+    Parameters
+    ----------
+    xx : `array`
+        Spatial axis.
+    hh : `array`
+        Function that depends on xx.
+    cfl_cut : `array`
+        Constant value to limit dt from cfl_adv_burger.
+        By default 0.98
+    ddx : `lambda function`
+        Allows to select the type of spatial derivative.
+        By default lambda x,y: deriv_dnw(x, y)
+
+
+    Returns
+    -------
+    dt : `array`
+        time interval
+    unnt : `array`
+        right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
+    """
     N = np.size(xx)
 
     unnt = np.zeros((N, nt))
     unnt[:, 0] = hh
-
     
     t = np.zeros(nt)
     
     for it in range(nt-1):
+        # Get the left and right u
         u_L = unnt[:-1, it]
         u_R = unnt[1:, it]
+        # fix boundaries
+        u_L = np.pad(u_L, (bnd_limits[0], bnd_limits[1]),
+                     bnd_type)
+        u_R = np.pad(u_R, (bnd_limits[1], bnd_limits[0]),
+                     bnd_type)
+        
+        # calcute the flux
         F_R = .5*u_R**2
         F_L = .5*u_L**2
+        
+        # Gets the velocities
         va = np.max([np.abs(u_R), np.abs(u_L)], axis=0)
-        dx = xx[it+1] - xx[it-1]
+        dx = np.gradient(xx)
+        
+        # Timestep and rhs
         dt = cfl_cut * cfl_adv_burger(va, xx)
         rhs = .5*(F_R + F_L) - .5*va*(u_R - u_L)
-        tmp = unnt[:, it] - dt*(rhs - np.roll(rhs, 1))/dx
-        # For upwind and centre
-        if bnd_limits[1] > 0:
-            unnt[:, it + 1] = np.pad(
-                tmp[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
-            )
-        # For downwind
-        else:
-            unnt[:, it + 1] = np.pad(tmp[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        # Calculates the next unnt
+        unnt[:, it + 1] = unnt[:, it] - dt*(rhs - np.roll(rhs, 1))/dx
         t[it+1] = t[it] + dt
     return t, unnt
 
