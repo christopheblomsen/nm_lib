@@ -664,7 +664,7 @@ def ops_Lax_LL_Add(
     N = np.size(xx)
     
     t = np.zeros(nt)
-    unnt = np.zeros((nt, N))
+    unnt = np.zeros((N, nt))
 
     unnt[:, 0] = hh
     
@@ -677,23 +677,21 @@ def ops_Lax_LL_Add(
         dt = np.min([dtu, dtv])
 
         # LAX method forwards
-        u = .5 * (np.roll(unnt[i, :], -1) + np.roll(unnt[i, :], 1)) + du*dt
-        v = .5 * (np.roll(unnt[i, :], -1) + np.roll(unnt[i, :], 1)) + dv*dt
+        u = .5 * (np.roll(unnt[:, i], -1) + np.roll(unnt[:, i], 1)) + du*dt
+        v = .5 * (np.roll(unnt[:, i], -1) + np.roll(unnt[:, i], 1)) + dv*dt
         
         
         if bnd_limits[1] > 0:
-            u[:, i + 1] = np.pad(
-                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
-            )
-            v[:, i + 1] = np.pad(
-                v[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
-            )
+            u = np.pad(
+                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+            v= np.pad(
+                v[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
         # For downwind
         else:
-            u[:, i + 1] = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
-            v[:, i + 1] = np.pad(v[bnd_limits[0]:], bnd_limits, bnd_type)
+            u = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
+            v = np.pad(v[bnd_limits[0]:], bnd_limits, bnd_type)
         
-        unnt[i + 1, :] = u + v - unnt[i, :]
+        unnt[:, i +  1] = u + v - unnt[:, i]
         t[i + 1] = t[i] + dt
 
     return t, unnt
@@ -762,10 +760,16 @@ def ops_Lax_LL_Lie(
     unnt[:, 0] = hh
     
     for i in range(nt-1):
-        dt1 = cfl_adv_burger(a=a, x=xx)
+        dtu, du = step_adv_burgers(xx=xx, hh=unnt[i, :], a=a, cfl_cut=cfl_cut, ddx=ddx)
         dt2 = cfl_adv_burger(a=b, x=xx)
 
-        dt = np.min([dt1, dt2])
+        dt = np.min([dtu, dt2])
+
+        # u forwards
+        u = .5 * (np.roll(unnt[i, :], -1) + np.roll(unnt[i, :], 1)) + du*dt
+
+        
+
 
 
         
