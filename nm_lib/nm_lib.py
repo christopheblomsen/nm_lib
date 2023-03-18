@@ -612,7 +612,7 @@ def ops_Lax_LL_Add(
     a,
     b,
     cfl_cut=0.98,
-    ddx=lambda x, y: deriv_dnw(x, y),
+    ddx=lambda x, y: deriv_cent(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
     **kwargs,
@@ -661,6 +661,42 @@ def ops_Lax_LL_Add(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+    
+    t = np.zeros(nt)
+    unnt = np.zeros((nt, N))
+
+    unnt[:, 0] = hh
+    
+    for i in range(nt-1):
+        dtu, du = step_adv_burgers(xx=xx, hh=unnt[:, i], 
+                                  a=a, cfl_cut=cfl_cut, ddx=ddx)
+        dtv, dv = step_adv_burgers(xx=xx, hh=unnt[:, i], 
+                                  a=b, cfl_cut=cfl_cut, ddx=ddx)
+        
+        dt = np.min([dtu, dtv])
+
+        # LAX method forwards
+        u = .5 * (np.roll(unnt[i, :], -1) + np.roll(unnt[i, :], 1)) + du*dt
+        v = .5 * (np.roll(unnt[i, :], -1) + np.roll(unnt[i, :], 1)) + dv*dt
+        
+        
+        if bnd_limits[1] > 0:
+            u[:, i + 1] = np.pad(
+                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+            v[:, i + 1] = np.pad(
+                v[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type
+            )
+        # For downwind
+        else:
+            u[:, i + 1] = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
+            v[:, i + 1] = np.pad(v[bnd_limits[0]:], bnd_limits, bnd_type)
+        
+        unnt[i + 1, :] = u + v - unnt[i, :]
+        t[i + 1] = t[i] + dt
+
+    return t, unnt
 
 
 def ops_Lax_LL_Lie(
@@ -670,7 +706,7 @@ def ops_Lax_LL_Lie(
     a,
     b,
     cfl_cut=0.98,
-    ddx=lambda x, y: deriv_dnw(x, y),
+    ddx=lambda x, y: deriv_cent(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
     **kwargs,
@@ -718,7 +754,23 @@ def ops_Lax_LL_Lie(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+    
+    t = np.zeros(nt)
+    unnt = np.zeros((nt, N))
 
+    unnt[:, 0] = hh
+    
+    for i in range(nt-1):
+        dt1 = cfl_adv_burger(a=a, x=xx)
+        dt2 = cfl_adv_burger(a=b, x=xx)
+
+        dt = np.min([dt1, dt2])
+
+
+        
+
+    return t, unnt
 
 def ops_Lax_LL_Strang(
     xx,
@@ -727,7 +779,7 @@ def ops_Lax_LL_Strang(
     a,
     b,
     cfl_cut=0.98,
-    ddx=lambda x, y: deriv_dnw(x, y),
+    ddx=lambda x, y: deriv_cent(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
     **kwargs,
@@ -785,7 +837,7 @@ def osp_Lax_LH_Strang(
     a,
     b,
     cfl_cut=0.98,
-    ddx=lambda x, y: deriv_dnw(x, y),
+    ddx=lambda x, y: deriv_cent(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
     **kwargs,
