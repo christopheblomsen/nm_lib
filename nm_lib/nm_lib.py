@@ -848,6 +848,50 @@ def ops_Lax_LL_Strang(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+    
+    t = np.zeros(nt)
+    unnt = np.zeros((N, nt))
+
+    unnt[:, 0] = hh
+    
+    for i in range(nt-1):
+        dtu, du = step_adv_burgers(xx=xx, hh=unnt[:, i], a=a, cfl_cut=cfl_cut, ddx=ddx)
+        dt2 = cfl_adv_burger(a=b, x=xx)
+
+        dt = np.min([dtu, dt2])
+
+        # u forwards
+        u = .5 * (np.roll(unnt[:, i], -1) + np.roll(unnt[:, i], 1)) - du*dt/2
+
+        if bnd_limits[1] > 0:
+            u = np.pad(
+                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+        # For downwind
+        else:
+            u = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        # dv with u
+        tmp, dv = step_adv_burgers(xx=xx, hh=u, a=b, cfl_cut=cfl_cut, ddx=ddx)
+
+        # v forwards
+        v = .5 * (np.roll(u, -1) + np.roll(u, 1)) - dv*dt
+        
+        if bnd_limits[1] > 0:
+            v = np.pad(
+                v[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+        # For downwind
+        else:
+            v = np.pad(v[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        tmp, dw = step_adv_burgers(xx=xx, hh=v, a=a, cfl_cut=cfl_cut, ddx=ddx)
+
+        # w forwards
+        w = .5 * (np.roll(v, -1) + np.roll(v, 1)) - dw*dt/2
+
+        unnt[:, i + 1] = w
+        t[i + 1] = t[i] + dt
+    return t, unnt
 
 
 def osp_Lax_LH_Strang(
@@ -907,6 +951,56 @@ def osp_Lax_LH_Strang(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+    
+    t = np.zeros(nt)
+    unnt = np.zeros((N, nt))
+
+    unnt[:, 0] = hh
+    
+    for i in range(nt-1):
+        dtu, du = step_adv_burgers(xx=xx, hh=unnt[:, i], a=a, cfl_cut=cfl_cut, ddx=ddx)
+        dt2 = cfl_adv_burger(a=b, x=xx)
+
+        dt = np.min([dtu, dt2])
+
+        # u forwards
+        u = .5 * (np.roll(unnt[:, i], -1) + np.roll(unnt[:, i], 1)) - du*dt/2
+
+        if bnd_limits[1] > 0:
+            u = np.pad(
+                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+        # For downwind
+        else:
+            u = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        # dv with u
+        tmp, dv = step_adv_burgers(xx=xx, hh=u, a=b, cfl_cut=cfl_cut, ddx=ddx)
+
+        # v forwards
+        v = .5 * (np.roll(u, -1) + np.roll(u, 1)) - dv*dt
+        
+        if (i == 0):
+            v, u_old, dt_old = hyman(xx, u, dv, a=b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
+        else:
+            v, dv, dt = hyman(xx, u, dv, a=b, fold=u_old, dtold=dt_old,
+                              cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
+        
+        if bnd_limits[1] > 0:
+            v = np.pad(
+                v[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+        # For downwind
+        else:
+            v = np.pad(v[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        tmp, dw = step_adv_burgers(xx=xx, hh=v, a=a, cfl_cut=cfl_cut, ddx=ddx)
+
+        # w forwards
+        w = .5 * (np.roll(v, -1) + np.roll(v, 1)) - dw*dt/2
+
+        unnt[:, i + 1] = w
+        t[i + 1] = t[i] + dt
+    return t, unnt
 
 
 def step_diff_burgers(xx, hh, a, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
