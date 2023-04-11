@@ -894,7 +894,7 @@ def ops_Lax_LL_Strang(
     return t, unnt
 
 
-def osp_Lax_LH_Strang(
+def ops_Lax_LH_Strang(
     xx,
     hh,
     nt,
@@ -983,7 +983,7 @@ def osp_Lax_LH_Strang(
         if (i == 0):
             v, u_old, dt_old = hyman(xx, u, dv, a=b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
         else:
-            v, dv, dt = hyman(xx, u, dv, a=b, fold=u_old, dtold=dt_old,
+            v, dv, dt_old = hyman(xx, u, dv, a=b, fold=u_old, dtold=dt_old,
                               cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
         
         if bnd_limits[1] > 0:
@@ -1049,6 +1049,8 @@ def NR_f(xx, un, uo, a, dt, **kwargs):
     `array`
         function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} -u^{n+1}_{j-1}) dt
     """
+    F = un - uo - a*(np.roll(un, -1) - 2*un - np.roll(un, 1)) * dt
+    return F
 
 
 def jacobian(xx, un, a, dt, **kwargs):
@@ -1071,6 +1073,19 @@ def jacobian(xx, un, a, dt, **kwargs):
     `array`
         Jacobian F_j'(u^{n+1}{k})
     """
+    dx = xx[1] - xx[0]
+    dx2 = dx*dx
+    N = np.size(xx)
+    F = np.zeros((N, N))
+
+    for x in range(N):
+        term = (dt*a)/dx2
+        F[x, x] = 1 + 2*term
+        if x < N - 1:
+            F[x, x+1] = -term
+        if x > 1:
+            F[x, x-1] = -term
+    return F
 
 
 def Newton_Raphson(
