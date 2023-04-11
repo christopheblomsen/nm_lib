@@ -603,6 +603,8 @@ def cfl_diff_burger(a, x):
     `float`
         min(dx/|a|)
     """
+    dx = np.gradient(x)
+    return np.min(dx/np.abs(a))
 
 
 def ops_Lax_LL_Add(
@@ -1025,6 +1027,7 @@ def step_diff_burgers(xx, hh, a, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
     `array`
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
+    
 
 
 def NR_f(xx, un, uo, a, dt, **kwargs):
