@@ -30,25 +30,8 @@ def deriv_dnw(xx, hh, **kwargs):
         grid point is ill (or missing) calculated.
     """
     # Using the roll method
-    y = (np.roll(hh, -1) - np.roll(hh, 0)) / (np.roll(xx, -1) - np.roll(xx, 0))
-    """
-    # Using the classical method
-    N = len(xx)
-    xh = np.zeros(N)
-
-    y = np.zeros(N)
-
-    xh[0] = xx[0] - 0.5 * (xx[1] - xx[0])
-    y[0] = hh[0]
-
-    for i in range(N - 1):
-        xh[i + 1] = 0.5 * (xx[i + 1] + xx[i])
-
-        y[i + 1] = (hh[i + 1] - hh[i]) / (xx[i + 1] - xx[i])
-
-    xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
-    y[-1] = hh[-1]
-    """
+    y = ((np.roll(hh, -1) - np.roll(hh, 0)) 
+         / (np.roll(xx, -1) - np.roll(xx, 0)))
     return y
 
 
@@ -248,24 +231,6 @@ def deriv_upw(xx, hh, **kwargs):
     `array`
         The upwind 2nd order derivative of hh respect to xx. First
         grid point is ill calculated.
-    """
-    # Using the classical method
-    """
-    N = len(xx)
-    xh = np.zeros(N)
-
-    y = np.zeros(N)
-
-    xh[0] = xx[0] - 0.5 * (xx[1] - xx[0])
-    y[0] = hh[0]
-
-    for i in range(N):
-        #xh[i + 1] = 0.5 * (xx[i + 1] + xx[i])
-
-        y[i] = (hh[i] - hh[i-1]) / (xx[i] - xx[i - 1])
-
-    xh[-1] = xx[-1] + 0.5 * (xx[-1] - xx[-2])
-    y[-1] = hh[-1]
     """
     # Using the roll method
     y = (np.roll(hh, 0) - np.roll(hh, 1)) / (np.roll(xx, 0) - np.roll(xx, 1))
@@ -982,10 +947,10 @@ def ops_Lax_LH_Strang(
         # v forwards
         v = .5 * (np.roll(u, -1) + np.roll(u, 1)) - dv*dt
         
-        if (i == 0):
-            v, u_old, dt_old = hyman(xx, u, dv, a=b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
+        if(i == 0):
+            v, u_old, dt_old = hyman(xx, v, dt, a=b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
         else:
-            v, dv, dt_old = hyman(xx, u, dv, a=b, fold=u_old, dtold=dt_old,
+            v, u_old, dt_old = hyman(xx, v, dt, a=b, fold=u_old, dtold=dt_old,
                               cfl_cut=cfl_cut, ddx=ddx, bnd_limits=bnd_limits)
         
         if bnd_limits[1] > 0:
@@ -1028,10 +993,33 @@ def step_diff_burgers(xx, hh, a, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
     dt = cfl_diff_burger(a, xx)
-    ans = ddx(xx, hh) - hh
-    return ans/dt
+    rhs = ddx(xx, hh) - hh
+    return dt, rhs/dt
     
+def evolv_diff_burgers(xx, hh, nt, a, ddx = lambda x, y: deriv_cent(x, y),
+                       cfl_cut=0.98, bnd_type='wrap', bnd_limits=[0,1]):
 
+    N = np.size(xx)
+    
+    t = np.zeros(nt)
+    unnt = np.zeros((N, nt))
+    
+    unnt[:, 0] = hh
+
+    for i in range(0, nt-1):
+        dt, rhs = step_diff_burgers(xx, unnt[:, i], a, ddx=ddx, cfl_cut=cfl_cut)
+        u = unnt[:, i] + rhs*dt
+        
+        if bnd_limits[1] > 0:
+            u = np.pad(
+                u[bnd_limits[0]: -bnd_limits[1]], bnd_limits, bnd_type)
+        # For downwind
+        else:
+            u = np.pad(u[bnd_limits[0]:], bnd_limits, bnd_type)
+
+        unnt[:, i+1] = hh
+        t[i+1] = t[i] + dt
+    return t, unnt
 
 def NR_f(xx, un, uo, a, dt, **kwargs):
     r"""
@@ -1053,9 +1041,10 @@ def NR_f(xx, un, uo, a, dt, **kwargs):
     Returns
     -------
     `array`
-        function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} -u^{n+1}_{j-1}) dt
+        function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} +u^{n+1}_{j-1}) dt
     """
-    F = un - uo - a*(np.roll(un, -1) - 2*un - np.roll(un, 1)) * dt
+    dx = np.gradient(xx)
+    F = un - uo - a*(np.roll(un, -1) - 2*un + np.roll(un, 1)) * (dt/dx**2)
     return F
 
 
@@ -1084,6 +1073,10 @@ def jacobian(xx, un, a, dt, **kwargs):
     N = np.size(xx)
     F = np.zeros((N, N))
 
+    """
+    np fill diagonal. upper [1:] -c, lower [:, 1:] -c
+    diag J, 1 + 2*C
+    """
     for x in range(N):
         term = (dt*a)/dx2
         F[x, x] = 1 + 2*term
@@ -1201,7 +1194,7 @@ def NR_f_u(xx, un, uo, dt, **kwargs):
     Returns
     -------
     `array`
-        function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} -u^{n+1}_{j-1}) dt
+        function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} +u^{n+1}_{j-1}) dt
     """
 
 
@@ -1329,7 +1322,35 @@ def taui_sts(nu, niter, iiter):
     `float`
         [(nu -1)cos(pi (2 iiter - 1) / 2 niter) + nu + 1]^{-1}
     """
+    arg = np.pi*(2*iiter - 1) / (2*niter)
+    ans = 1/((nu - 1)*np.cos(arg) + nu + 1)
+    return ans
 
+def tau_sts(nu, n, dt_cfl):
+    """
+    Uses the super time stepping method
+    Calculates the dt_sts
+
+    Parameters:
+    -----------
+    nu  :  `float`
+            dampening parameter
+    n   :   `int`
+            number of smaller steps
+    dt  :   `float`
+            cfl condition
+    
+    Returns:
+    --------
+    dt_sts  :   `float`
+            the super time stepping dt
+    """
+    a = n/(2*np.sqrt(nu))
+    b = (1+np.sqrt(nu))**(2*n)-(1 - np.sqrt(nu))**(2*n)
+    c = (1+np.sqrt(nu))**(2*n)+(1 - np.sqrt(nu))**(2*n)
+    
+    dt_sts = a*(b/c)*dt_cfl
+    return dt_sts
 
 def evol_sts(
     xx,
@@ -1384,6 +1405,35 @@ def evol_sts(
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain.
     """
+    N = np.size(xx)
+    unnt = np.zeros((N, nt))
+    unnt[:, 0] = hh
+    t = np.zeros(nt)
+    tsts = []
+    dx = xx[1] - xx[0]
+    tcfl = (dx**2)/a
+    
+    for n in range(nt-1):
+        ts = []
+        unts = np.zeros((N, n_sts))
+        unts[:, 0] = unnt[:, n]
+        for it in range(0, n_sts-1):
+            dti = tcfl*taui_sts(nu, n_sts, it)
+            dt, u1_temp = step_diff_burgers(xx, unts[:, it], a,
+                                            cfl_cut=cfl_cut, ddx=ddx)
+            u1_temp = unts[:, it] - u1_temp*dti
+            # Boundaries
+            if bnd_limits[1] > 0:
+                u1_c = u1_temp[bnd_limits[0]: -bnd_limits[1]]
+            else:
+                u1_c = u1_temp[bnd_limits[0]:]
+            unts[:, it+1] = np.pad(u1_c, bnd_limits, bnd_type)
+            unntmp = unts[:, it+1]
+            ts.append(dti)
+        tsts.append(ts)
+        unnt[:, n+1] = unntmp
+        t[n+1] = t[n] + np.sum(ts)
+    return t, unnt, tsts
 
 
 def hyman(
