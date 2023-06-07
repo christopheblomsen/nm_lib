@@ -996,7 +996,7 @@ def step_diff_burgers(xx, hh, a, cfl_cut, ddx=lambda x, y: deriv_cent(x, y), **k
     eps = 1e-10
     dt = cfl_cut*cfl_diff_burger(a, xx)
     rhs = a*ddx(xx, ddx(xx, hh))
-    return dt, rhs/dt
+    return dt, rhs
     
 def evolv_diff_burgers(xx, hh, nt, a, ddx = lambda x, y: deriv_cent(x, y),
                        cfl_cut=0.98, bnd_type='wrap', bnd_limits=[0,1]):
@@ -1325,7 +1325,8 @@ def taui_sts(nu, niter, iiter):
         [(nu -1)cos(pi (2 iiter - 1) / 2 niter) + nu + 1]^{-1}
     """
     arg = np.pi*(2*iiter - 1) / (2*niter)
-    ans = 1./((nu - 1)*np.cos(arg) + nu + 1)
+    # ans = 1./((nu - 1)*np.cos(arg) + nu + 1)
+    ans = ((nu - 1)*np.cos(arg) + nu + 1)**(-1)
     return ans
 
 def tau_sts(nu, n, dt_cfl):
@@ -1354,12 +1355,12 @@ def tau_sts(nu, n, dt_cfl):
     dt_sts = a*(b/c)*dt_cfl
     return dt_sts
 
-def evol_sts(
+def evolv_sts(
     xx,
     hh,
     nt,
     a,
-    cfl_cut=0.45,
+    cfl_cut=0.98,
     ddx=lambda x, y: deriv_cent(x, y),
     bnd_type="wrap",
     bnd_limits=[0, 1],
@@ -1423,13 +1424,14 @@ def evol_sts(
             dti = tcfl*taui_sts(nu, n_sts, it)
             dt, u1_temp = step_diff_burgers(xx, unts[:, it], a,
                                             cfl_cut=cfl_cut, ddx=ddx)
-            u1_temp = unts[:, it] - u1_temp*dti
+            u1_temp = unts[:, it] + u1_temp*dti
             # Boundaries
             if bnd_limits[1] > 0:
                 u1_c = u1_temp[bnd_limits[0]: -bnd_limits[1]]
             else:
                 u1_c = u1_temp[bnd_limits[0]:]
             unts[:, it+1] = np.pad(u1_c, bnd_limits, bnd_type)
+            unts[:, it+1] = u1_temp
             unntmp = unts[:, it+1]
             ts.append(dti)
         tsts.append(ts)
