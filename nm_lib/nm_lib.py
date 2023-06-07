@@ -257,6 +257,7 @@ def deriv_cent(xx, hh, **kwargs):
     return (np.roll(hh, -1) - np.roll(hh, 1)) / (2 * (np.roll(xx, -1) - np.roll(xx, 1)))
 
 
+
 def evolv_uadv_burgers(
     xx,
     hh,
@@ -566,10 +567,10 @@ def cfl_diff_burger(a, x):
     Returns
     -------
     `float`
-        min(dx/|a|)
+        min(dx**2/2|a|)
     """
     dx = np.gradient(x)
-    return np.min(dx/np.abs(a))
+    return np.min(dx**2/(2*np.abs(a)))
 
 
 def ops_Lax_LL_Add(
@@ -970,7 +971,7 @@ def ops_Lax_LH_Strang(
     return t, unnt
 
 
-def step_diff_burgers(xx, hh, a, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
+def step_diff_burgers(xx, hh, a, cfl_cut, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
     r"""
     Right hand side of the diffusive term of Burger's eq. where nu can be a
     constant or a function that depends on xx.
@@ -992,8 +993,9 @@ def step_diff_burgers(xx, hh, a, ddx=lambda x, y: deriv_cent(x, y), **kwargs):
     `array`
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x}
     """
-    dt = cfl_diff_burger(a, xx)
-    rhs = ddx(xx, hh) - hh
+    eps = 1e-10
+    dt = cfl_cut*cfl_diff_burger(a, xx)
+    rhs = a*ddx(xx, ddx(xx, hh))
     return dt, rhs/dt
     
 def evolv_diff_burgers(xx, hh, nt, a, ddx = lambda x, y: deriv_cent(x, y),
@@ -1323,7 +1325,7 @@ def taui_sts(nu, niter, iiter):
         [(nu -1)cos(pi (2 iiter - 1) / 2 niter) + nu + 1]^{-1}
     """
     arg = np.pi*(2*iiter - 1) / (2*niter)
-    ans = 1/((nu - 1)*np.cos(arg) + nu + 1)
+    ans = 1./((nu - 1)*np.cos(arg) + nu + 1)
     return ans
 
 def tau_sts(nu, n, dt_cfl):
@@ -1346,8 +1348,8 @@ def tau_sts(nu, n, dt_cfl):
             the super time stepping dt
     """
     a = n/(2*np.sqrt(nu))
-    b = (1+np.sqrt(nu))**(2*n)-(1 - np.sqrt(nu))**(2*n)
-    c = (1+np.sqrt(nu))**(2*n)+(1 - np.sqrt(nu))**(2*n)
+    b = (1 + np.sqrt(nu))**2*n - (1 - np.sqrt(nu))**2*n
+    c = (1 + np.sqrt(nu))**2*n + (1 - np.sqrt(nu))**2*n
     
     dt_sts = a*(b/c)*dt_cfl
     return dt_sts
