@@ -10,6 +10,7 @@ Created on Fri Jul 02 10:25:17 2021.
 
 # import external public "common" modules
 import numpy as np
+from scipy.optimize import fsolve
 
 
 def deriv_dnw(xx, hh, **kwargs):
@@ -1554,3 +1555,401 @@ def animation(xx, ut, U, nt, t, nrows=1, ncols=1, figsize=(10, 5),
 
     anim = FuncAnimation(fig, animate, interval=1, frames=nt, init_func=init)
     return anim
+
+""" 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+SOD TUBE below
+"""
+
+def shock_function(P_prime, γ=5/3,
+                   rhoL=1., rhoR=0.125,
+                    PL=1., PR=0.1):
+    """
+    Shock function to calculate P' = P1 for when u1 = u2
+
+    Parameters
+    ----------
+    P_prime :   `float`
+                The initial guess of the Pressure
+    γ       :   `float`
+                Default 5/3
+    rhoL    :   `float`
+                Initial density left side
+                Default 1.
+    rhoR    :   `float`
+                Initial density right side
+                Default 0.125
+    PL      :   `float`
+                Initial Pressure left side
+                Default 1.
+    PR      :   `float`
+                Initial Pressure right side
+                Default 0.1
+                
+    Returns
+    ---------
+    P_prime : `float`
+    """
+    Γ = (γ - 1)/(γ + 1)
+    β = (γ - 1)/(2*γ)
+    u1 = (P_prime - PR)*np.sqrt((1 - Γ)/(rhoR*(P_prime + Γ*PR)))
+    
+    u2 = (PL**β - P_prime**β)*np.sqrt((1 - Γ**2)*PL**(1/γ)/Γ**2*rhoL)
+    
+    return u1 - u2
+
+def iterate(function, guess):
+    """
+    Used to interativly solve for the Pressure in the expansion region
+    
+    Parameters
+    ----------
+    function    : `function`
+                    By design should be `shock_function`
+    guess       : `float`
+                    The initial guess
+    
+    Returns
+    ---------
+    Root :  `float`
+            root of the function used to determined P'
+    """
+    ans = fsolve(function, guess)
+    return ans[0]
+
+def shock_region(P_prime, Γ,
+            rhoR=0.125, PR=0.1):
+    """
+    Calculates the profiles in the shock region
+
+    Parameters:
+    -----------
+    P_prime : `float`
+                The pressure
+    Γ       : `float`
+                Coefficient dependent on adiabatic gamma
+
+    Returns:
+    ----------
+    profiles    : `list`
+                list of all the profiles within the region 
+    """
+    
+    P1 = P_prime
+    rho1 = rhoR*(P1 + Γ*PR)/(PR + Γ*P1)
+    u1 = (P_prime - PR)*np.sqrt((1 - Γ)/(rhoR*(P_prime + Γ*PR)))
+    
+    return P1, rho1, u1
+
+def contact_region(P1, u1,
+            PL=1.,
+            rhoL=1., γ=5/3):
+    """
+    Calculates the profiles in the contact region 
+
+    Parameters:
+    -----------
+    P1      : `float`
+                The pressure from region 1
+    u1      : `float`
+                velocity from region 1
+    PL      : `float`
+                The left boundary pressure
+                Default 1.
+    rhoL    : `float`
+                The left boundary density
+                Default 1.
+    γ       : `float`
+                Adiabatic gamma
+                Default 5/3
+
+    Returns:
+    ----------
+    profiles    : `list`
+                list of all the profiles within the region 
+    """
+    u2 = u1
+    P2 = P1
+    rho2 = rhoL*(P2/PL)**(1/γ)
+    return P2, rho2, u2
+
+def expansion_fan_region(xx, tt, c1, 
+                        γ=5/3, PL=1., x0=0.5):
+    """
+    Calculates the profiles in the expansion fan region 
+
+    Parameters:
+    -----------
+    xx      : `array`
+                Spatial domain of test
+    tt      : `float`
+                Time point of calculation
+    γ       : `float`
+                Adiabatic gamma
+                Default 5/3
+    PL      : `float`
+                The left boundary pressure
+                Default 1.
+    x0    : `float`
+                Middle of the spatial domain
+                Default 0.5
+
+    Returns:
+    ----------
+    profiles    : `list`
+                list of all the profiles within the region 
+    """
+    u_e = 2/(γ + 1)*(c1 + (xx - x0)/tt)
+    
+    # Varying sound speed over region
+    c_e = c1 - (γ - 1)*u_e/2
+    
+    P_e = PL*(c_e/c1)**(2*γ/(γ - 1))
+    
+    rho_e = γ*P_e/c_e**2
+    
+    return P_e, rho_e, u_e
+
+def intersect_left2expansion(tt, c1, x0=0.5):
+    """
+    Calculates the intersect between left boundary
+    region and the expansion fan region
+
+    Parameters
+    ----------
+    tt  :   `float`
+            Time point of the calculation
+    c1  :   `float`
+            Sound speed from left boundary
+    x0  :   `float`
+            Middle of spatial domain
+            Default 0.5
+    
+    Returns:
+    ---------
+    intersect_point :   `float`
+                        intersect point between regions
+    
+    """
+    return x0 - c1*tt
+
+def intersect_expansion2contact(tt, u2, c2, x0=0.5):
+    """
+    Calculates the intersect between expansion fan region
+    and the contact region
+
+    Parameters
+    ----------
+    tt  :   `float`
+            Time point of the calculation
+    u2  :   `float`
+            Velocity from the contact region
+    c2  :   `float`
+            Sound speed from the contact region
+    x0  :   `float`
+            Middle of spatial domain
+            Default 0.5
+    
+    Returns:
+    ---------
+    intersect_point :   `float`
+                        intersect point between regions
+    
+    """
+    return x0 + (u2 - c2)*tt
+
+def intersect_contact2shock(tt, u2, x0=0.5):
+    """
+    Calculates the intersect between contact region
+    and the shock region
+
+    Parameters
+    ----------
+    tt  :   `float`
+            Time point of the calculation
+    u2  :   `float`
+            Velocity from the contact region
+    x0  :   `float`
+            Middle of spatial domain
+            Default 0.5
+    
+    Returns:
+    ---------
+    intersect_point :   `float`
+                        intersect point between regions
+    
+    """
+    return x0 + u2*tt
+
+def intersect_shock2right(tt, w, x0=0.5):
+    """
+    Calculates the intersect between shock region
+    and the right boundary
+
+    Parameters
+    ----------
+    tt  :   `float`
+            Time point of the calculation
+    w   :   `float`
+            Scale factor for the intersect point
+    x0  :   `float`
+            Middle of spatial domain
+            Default 0.5
+    
+    Returns:
+    ---------
+    intersect_point :   `float`
+                        intersect point between regions
+    
+    """
+    return x0 + w*tt
+
+def sound_speed(P, rho, γ=5/3):
+    """
+    Calculates the sound speed
+
+    Parameters
+    ----------
+    P   :   `float`
+            Pressure
+    rho :   `float`
+            Density
+    γ   :   Adiabatic gamma
+            Default 5/3
+    """
+    return np.sqrt(γ*P/rho)
+
+def make_array(qL, q_e, q2, q1, qR, N):
+    """
+    Makes an array out from floats
+
+    Parameters
+    ----------
+    qL  :   `float`
+            Left boundary value
+    q_e  :   `array`
+            expansion fan values
+    q2  :   `float`
+            contact region value
+    q1  :   `float`
+            shock region value
+    qR  :   `float`
+            Right boundary value
+    N   :   `int`
+            Sime of the regions
+    """
+    q = np.concatenate((qL*np.ones(N),
+                        q_e,
+                        q2*np.ones(N),
+                        q1*np.ones(N),
+                        qR*np.ones(N)))
+    return q
+
+def solve_sod_analytical(tt, x0=0.5, N=100, γ=5/3, 
+                         rhoL=1., rhoR=0.125,
+                         PL=1., PR=0.1,
+                         uL=0., uR=0., 
+                         eps=1e-10):
+    """
+    Solves the sod tube problem analytically
+
+    Requiers
+    ------------
+    sound_speed
+    iterate
+    shock_function
+    intersect_left2expansion
+    intersect_expansion2contact
+    intersect_contact2shock
+    expansion_fan_region
+    make_array
+
+    Parameters
+    ----------
+    tt  :   `float`
+            Time point of the calculation
+    x0  :   `float`
+            Middle of spatial domain
+            Default 0.5
+    N   :   `int`
+            Number of points per domain
+    γ   : `float`
+            Adiabatic gamma
+            Default 5/3
+    rhoL: `float`
+            The left boundary density
+            Default 1.
+    rhoR: `float`
+            The right boundary density
+            Default 0.125.
+    PL  : `float`
+            The left boundary pressure
+            Default 1.
+    PR  : `float`
+            The right boundary pressure
+            Default 0.1.
+    uL  : `float`
+            The left boundary velocity
+            Default 0. 
+    uR  : `float`
+            The right boundary velocity
+            Default 0..
+
+    Returns
+    ----------
+    list    : `arrays`
+                arrays of the profiles over the domain
+    list[0] : `array`
+                xx, spatial domain
+    list[1] : `array`
+                P, pressure over domain
+    list[2] : `array`
+                rho, density over domain
+    list[3] : `array`
+                velocity, density over domain
+                
+    """   
+
+    c1 = sound_speed(PL, rhoL, γ=γ)
+    c5 = sound_speed(PR, rhoR, γ=γ)
+
+    Γ = (γ - 1)/(γ + 1)
+    β = (γ - 1)/(2*γ)
+
+    P_guess = (PL + PR)/2
+    P_prime = iterate(shock_function, P_guess)
+    
+    P1, rho1, u1 = shock_region(P_prime, Γ, rhoR=rhoR, PR=PR)
+    
+    P2, rho2, u2 = contact_region(P1, u1, rhoL=rhoL, γ=γ)
+    
+    # find boundaries
+    left2e = intersect_left2expansion(tt, c1, x0=x0)
+    
+    c2 = sound_speed(P2, rho2, γ=γ)
+    
+    # find boundaries around the contact region
+    e2contact = intersect_expansion2contact(tt, u2, c2, x0=x0)
+    contact2shock = intersect_contact2shock(tt, u2, x0=x0)
+    
+    z = P2/PR - 1
+
+    fact = np.sqrt(1 + (γ + 1)/(2*γ)*z)
+    
+    shock2right = intersect_shock2right(tt, c5*fact, x0=x0)
+    
+    expansion_cell = np.linspace(left2e, e2contact, N)
+    P_e, rho_e, u_e = expansion_fan_region(expansion_cell, tt, c1, γ=γ, PL=PL, x0=x0)
+    
+    # make the arrays of the domain
+    P = make_array(PL, P_e, P2, P1, PR, N)
+    rho = make_array(rhoL, rho_e, rho2, rho1, rhoR, N)
+    u = make_array(uL, u_e, u2, u1, uR, N)
+    
+    xx = np.concatenate((np.linspace(0, left2e, N),
+                         np.linspace(left2e, e2contact, N),
+                         np.linspace(e2contact, contact2shock, N),
+                         np.linspace(contact2shock, shock2right, N),
+                         np.linspace(shock2right, 1, N)))
+    
+    return xx, P, rho, u
