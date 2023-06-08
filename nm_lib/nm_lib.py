@@ -25,7 +25,6 @@ def deriv_dnw(xx, hh, **kwargs):
         Spatial axis.
     hh : `array`
         Function that depends on xx.
-
     Returns
     -------
     `array`
