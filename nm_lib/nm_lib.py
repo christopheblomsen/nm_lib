@@ -10,6 +10,8 @@ Created on Fri Jul 02 10:25:17 2021.
 
 # import external public "common" modules
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from scipy.optimize import fsolve
 
 
@@ -1953,3 +1955,190 @@ def solve_sod_analytical(tt, x0=0.5, N=100, γ=5/3,
                          np.linspace(shock2right, 1, N)))
     
     return xx, P, rho, u
+
+    
+def init_sod_analytical(N=100, 
+                        rhoL=1., rhoR=0.125,
+                        PL=1., PR=0.1,
+                        uL=0., uR=0.):
+    """
+    Initialises the domain for the sod analytical solution
+    
+    Parameters
+    ----------
+    N   :   `int`
+            Number of points per domain
+            Default 100
+    rhoL: `float`
+            The left boundary density
+            Default 1.
+    rhoR: `float`
+            The right boundary density
+            Default 0.125.
+    PL  : `float`
+            The left boundary pressure
+            Default 1.
+    PR  : `float`
+            The right boundary pressure
+            Default 0.1.
+    uL  : `float`
+            The left boundary velocity
+            Default 0. 
+    uR  : `float`
+            The right boundary velocity
+            Default 0..
+
+    Returns
+    ----------
+    list    : `arrays`
+                arrays of the profiles over the domain
+    list[0] : `array`
+                xx, spatial domain
+    list[1] : `array`
+                P, pressure over domain
+    list[2] : `array`
+                rho, density over domain
+    list[3] : `array`
+                velocity, density over domain
+                
+    """
+    nx = int(5*N)
+    nx2 = int(nx/2)
+
+    x0 = spatial_domain(nx, x0=0, xf=1)
+    P0 = np.ones(nx)
+    rho0 = np.ones(nx)
+    u0 = np.ones(nx)
+    
+    P0[:nx2] = PL
+    P0[nx2:] = PR
+    
+    rho0[:nx2] = rhoL
+    rho0[nx2:] = rhoR
+    
+    u0[:nx2] = uL
+    u0[nx2:] = uR
+    
+    return x0, P0, rho0, u0
+
+def solve_sod_array(t_end, nt, N=100, 
+                    rhoL=1., rhoR=0.125,
+                    PL=1., PR=0.1,
+                    uL=0., uR=0.):
+    """
+    Solves the sod analytical solution to a time end
+    over nt timesteps
+    
+    Parameters
+    ----------
+    t_end:  `float`
+            Final timepoint
+    nt  :   `int`
+            Number of timepoints
+    N   :   `int`
+            Number of points per domain
+            Default 100
+    rhoL: `float`
+            The left boundary density
+            Default 1.
+    rhoR: `float`
+            The right boundary density
+            Default 0.125.
+    PL  : `float`
+            The left boundary pressure
+            Default 1.
+    PR  : `float`
+            The right boundary pressure
+            Default 0.1.
+    uL  : `float`
+            The left boundary velocity
+            Default 0. 
+    uR  : `float`
+            The right boundary velocity
+            Default 0..
+
+    Returns
+    ----------
+    list    : `arrays`
+                arrays of the profiles over the domain
+    list[0] : `array`
+                xx, spatial domain
+    list[1] : `array`
+                P, pressure over domain
+    list[2] : `array`
+                rho, density over domain
+    list[3] : `array`
+                velocity, density over domain
+    list[4] : `array`
+                time, corresponding time array
+    """
+    
+    t = np.linspace(0, t_end, nt)
+    nx = int(5*N)
+    x0, P0, rho0, u0 = init_sod_analytical(N, rhoL, rhoR, PL, PR, uL, uR)
+    
+    x = np.zeros((nx, nt))
+    P = np.zeros((nx, nt))
+    rho = np.zeros((nx, nt))
+    u = np.zeros((nx, nt))
+    
+    x[:, 0] = x0
+    P[:, 0] = P0
+    rho[:, 0] = rho0
+    u[:, 0] = u0
+    
+    for it in range(1, nt):
+        x_temp, P_temp, rho_temp, u_temp = solve_sod_analytical(t[it], N=N)
+        x[:, it] = x_temp
+        P[:, it] = P_temp
+        rho[:, it] = rho_temp
+        u[:, it] = u_temp
+    
+    return x, P, rho, u, t
+        
+
+def spatial_domain(nump, x0=-2.6, xf=2.6):
+    """
+    Gets the spatial domain
+
+    Parameters
+    ----------
+    nump    :   `int`
+                number of spatial points
+    x0      :   `float`
+                starting position
+    xf      :    `float`
+                final position
+    
+    Returns
+    ---------
+    xx      :   `array`
+                spatial domain
+    """
+    ans = np.arange(nump)/(nump - 1) * (xf - x0) + x0
+    return ans
+
+def animate_sod(x, P, rho, u, t):
+    """
+    Animates the sod solution
+    """
+    nt = len(t)
+    fig, axes = plt.subplots(1, 1, figsize=(10, 10))
+
+    def init():
+        axes.plot(x[:, 0], P[:, 0], label='P', color='green')
+        axes.plot(x[:, 0], rho[:, 0], label='rho', color='blue')
+        axes.plot(x[:, 0], u[:, 0], label='u', color='red')
+        axes.set_title(f't=0 s')
+        axes.legend()
+        
+    def animate(i):
+        axes.clear()
+        axes.plot(x[:, i], P[:, i], label='P', color='green')
+        axes.plot(x[:, i], rho[:, i], label='rho', color='blue')
+        axes.plot(x[:, i], u[:, i], label='u', color='red')
+        axes.legend()
+        axes.set_title(f't={t[i]:.2f} s')        
+    
+    anim = FuncAnimation(fig, animate, interval=1, frames=(nt-1), init_func=init)
+    return anim
