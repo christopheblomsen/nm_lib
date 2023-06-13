@@ -2192,8 +2192,19 @@ def init_array(domain, nt, P0, rho0, u0, e0, γ=5/3):
 
     return Pg, e, moment, rho, u
 
+def get_idx(i, j, k, it):
+    idx_xx = (slice(None), j, k)
+    idx_yy = (i, slice(None), k)
+    idx_zz = (i, j, slice(None))
+    
+    idx_x = (slice(None), j, k, it)
+    idx_y = (i, slice(None), k, it)
+    idx_z = (i, j, slice(None), it)
+    
+    return idx_xx, idx_yy, idx_zz, idx_x, idx_y, idx_z
+
 def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
-           γ=5/3, cfl_cut=0.2, ddx=lambda x, y: deriv_dnw(x, y),
+           γ=5/3, cfl_cut=0.2, ddx=lambda x, y: deriv_cent(x, y),
            method='FTCS', bnd_type='wrap', bnd_limits=[0, 1], debug=False):
     nx, ny, nz = domain
     Pg, e, moment, rho, u = init_array(domain, nt, P0, rho0, u0, e0, γ=γ)
@@ -2204,25 +2215,26 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
     moment_rhs = np.zeros((domain))
     e_rhs = np.zeros((domain))
 
-    for i in range(0, nt-1):
-        idx = (slice(None), slice(None), slice(None), i)
+    for it in range(0, nt-1):
+        idx = (slice(None), slice(None), slice(None), it)
+        idx_next = (slice(None), slice(None), slice(None), it+1)
+        """
         idx_xx = (slice(None), 0, 0)
         idx_yy = (0, slice(None), 0)
         idx_zz = (0, 0, slice(None))
         idx_x = (slice(None), 0, 0, i)
         idx_y = (0, slice(None), 0, i)
         idx_z = (0, 0, slice(None), i)
-        idx_next = (slice(None), slice(None), slice(None), i+1)
-
+        """
         arg = np.abs(γ*Pg[idx] / (rho[idx] + eps))
         cs = np.sqrt(arg)
         # For the hardcoding part
         #Pg_temp = Pg[:, :, :, i]
 
         #cs = np.sqrt(γ * Pg_temp / (rho[:, :, :, i] + eps))
-        find_nan(cs, 'cs', i)
-        find_nan(rho[idx], 'rho', i)
-        find_nan(Pg[idx], 'Pg', i)
+        find_nan(cs, 'cs', it)
+        find_nan(rho[idx], 'rho', it)
+        find_nan(Pg[idx], 'Pg', it)
         #find_nan(arg, 'arg', i)
         if debug:
             print('arg')
@@ -2234,15 +2246,21 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
             print(f'rho value with corresponding cs nan : {rho[idx][np.where(np.isnan(cs) )]}')
 
         u = moment[idx]/(rho[idx] + eps)
-        ux = u[idx_xx]
-        uy = u[idx_yy]
-        uz = u[idx_zz]
+        dt_list = []
+        for i in range(nx):
+            for j in range(ny):
+                for k in range(nz):
+                    idx_xx, idx_yy, idx_zz, idx_x, idx_y, idx_z = get_idx(i, j, k, it)
+                    ux = u[idx_xx]
+                    uy = u[idx_yy]
+                    uz = u[idx_zz]
+                    dt_list.append(calculate_dt(xx, yy, zz, u, cs, eps, nx, ny, nz, idx_xx, idx_yy, idx_zz))
         # cfl condition
-        dt = cfl_cut*(calculate_dt(xx, yy, zz, u, cs, eps, nx, ny, nz, idx_xx, idx_yy, idx_zz))
+        dt = cfl_cut*np.min(dt_list)
         if dt < 0:
-            print(f'dt negative: {i}')
+            print(f'dt negative: {it}')
             break
-        find_nan(dt, 'dt', i)
+        find_nan(dt, 'dt', it)
         if np.any(np.isnan(dt)):
             return Pg, rho, moment, e, time
         if debug:
@@ -2272,53 +2290,69 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
 
 
         # Split the operations into many if statements
-        # because need to check the value for nN
-        if nx > 1:
-            rho_rhs[idx_xx] = -ddx(xx, rho[idx_x]*ux)
-        if ny > 1:
-            rho_rhs[idx_yy] = -ddx(yy, rho[idx_y]*uy)
-        if nz > 1:
-            rho_rhs[idx_zz] = -ddx(zz, rho[idx_z]*uz)
+        for i in range(nx):
+            for j in range(ny):
+                for k in range(nz):
+                    idx_xx, idx_yy, idx_zz, idx_x, idx_y, idx_z = get_idx(i, j, k, it)
+                    ux = u[idx_xx]
+                    uy = u[idx_yy]
+                    uz = u[idx_zz]
 
-        # Momentum equation
-        moment_rhs_x = 0.
-        moment_rhs_y = 0. 
-        moment_rhs_z = 0.
-        if nx > 1:
-            moment_rhs_x += -(ddx(xx, moment[idx_x]*ux + Pg[idx_x]))
-            #moment_rhs_x += -(ddx(xx, rho[idx_x]*ux*ux + Pg[idx_x]))
-            # TODO Aske about the moment below
-            moment_rhs_y += -(ddx(xx, rho[idx_x]*uy*uy))
-            moment_rhs_z += -(ddx(xx, rho[idx_x]*uz*uz))
-        if ny > 1:
-            moment_rhs_x += -(ddx(yy, moment[idx_y]*ux))
-            moment_rhs_y += -(ddx(yy, moment[idx_y]*ux + Pg[idx_y]))
-            moment_rhs_z += -(ddx(yy, moment[idx_y]*uz))
-            #moment_rhs_x += -(ddx(yy, rho[idx_y]*ux*uy))
-            #moment_rhs_y += -(ddx(yy, rho[idx_y]*ux*uy + Pg[idx_y]))
-            #moment_rhs_z += -(ddx(yy, rho[idx_y]*uy*uz))
-        if nz > 1:
-            #moment_rhs_x += -(ddx(zz, rho[idx_z]*ux*uz))
-            #moment_rhs_y += -(ddx(zz, rho[idx_z]*uz*uy))
-            #moment_rhs_z += -(ddx(zz, rho[idx_z]*ux*uz + Pg[idx_z]))
-            moment_rhs_x += -(ddx(zz, moment[idx_z]*uz))
-            moment_rhs_y += -(ddx(zz, moment[idx_z]*uy))
-            moment_rhs_z += -(ddx(zz, moment[idx_z]*ux + Pg[idx_z]))
-            
-        if nx > 1:
-            moment_rhs[idx_xx] = moment_rhs_x
-        if ny > 1:
-            moment_rhs[idx_yy] = moment_rhs_y
-        if nz > 1:
-            moment_rhs[idx_zz] = moment_rhs_z
+                    if nx > 1:
+                        rho_rhs[idx_xx] = -ddx(xx, rho[idx_x]*ux)
+                    if ny > 1:
+                        rho_rhs[idx_yy] = -ddx(yy, rho[idx_y]*uy)
+                    if nz > 1:
+                        rho_rhs[idx_zz] = -ddx(zz, rho[idx_z]*uz)
+
+                        
+                    # Momentum equation
+                    moment_rhs_x = 0.
+                    moment_rhs_y = 0. 
+                    moment_rhs_z = 0.
+                    if nx > 1:
+                        moment_rhs_x += -(ddx(xx, moment[idx_x]*ux + Pg[idx_x]))
+                        #moment_rhs_x += -(ddx(xx, rho[idx_x]*ux*ux + Pg[idx_x]))
+                        # TODO Aske about the moment below
+                        if ny > 1:
+                            moment_rhs_y += -(ddx(xx, rho[idx_x]*uy*uy))
+                        if nz > 1:
+                            moment_rhs_z += -(ddx(xx, rho[idx_x]*uz*uz))
+                    if ny > 1:
+                        #moment_rhs_y += -(ddx(yy, moment[idx_y]*ux + Pg[idx_y]))
+                        moment_rhs_y += -(ddx(yy, moment[idx_y]*uy + Pg[idx_y]))
+                        if nx > 1:
+                            moment_rhs_x += -(ddx(yy, moment[idx_y]*ux))
+                        if nz > 1:
+                            moment_rhs_z += -(ddx(yy, moment[idx_y]*uz))
+                        #moment_rhs_x += -(ddx(yy, rho[idx_y]*ux*uy))
+                        #moment_rhs_y += -(ddx(yy, rho[idx_y]*ux*uy + Pg[idx_y]))
+                        #moment_rhs_z += -(ddx(yy, rho[idx_y]*uy*uz))
+                    if nz > 1:
+                        #moment_rhs_x += -(ddx(zz, rho[idx_z]*ux*uz))
+                        #moment_rhs_y += -(ddx(zz, rho[idx_z]*uz*uy))
+                        #moment_rhs_z += -(ddx(zz, rho[idx_z]*ux*uz + Pg[idx_z]))
+                        moment_rhs_z += -(ddx(zz, moment[idx_z]*uz + Pg[idx_z]))
+                        if nx > 1:
+                            moment_rhs_x += -(ddx(zz, moment[idx_z]*ux))
+                        if ny > 1:
+                            moment_rhs_y += -(ddx(zz, moment[idx_z]*uy))
+                        #moment_rhs_z += -(ddx(zz, moment[idx_z]*ux + Pg[idx_z]))
+                        
+                    if nx > 1:
+                        moment_rhs[idx_xx] = moment_rhs_x
+                    if ny > 1:
+                        moment_rhs[idx_yy] = moment_rhs_y
+                    if nz > 1:
+                        moment_rhs[idx_zz] = moment_rhs_z
 
 
-        if nx > 1:
-            e_rhs[idx_xx] = -(ddx(xx, e[idx_x]*ux) + Pg[idx_x]*ddx(xx, ux))
-        if ny > 1:
-            e_rhs[idx_yy] = -(ddx(yy, e[idx_y]*uy) + Pg[idx_y]*ddx(yy, uy))
-        if nz > 1:
-            e_rhs[idx_zz] = -(ddx(zz, e[idx_z]*uz) + Pg[idx_z]*ddx(zz, uz))
+                    if nx > 1:
+                        e_rhs[idx_xx] = -(ddx(xx, e[idx_x]*ux) + Pg[idx_x]*ddx(xx, ux))
+                    if ny > 1:
+                        e_rhs[idx_yy] = -(ddx(yy, e[idx_y]*uy) + Pg[idx_y]*ddx(yy, uy))
+                    if nz > 1:
+                        e_rhs[idx_zz] = -(ddx(zz, e[idx_z]*uz) + Pg[idx_z]*ddx(zz, uz))
 
 
         if method == 'FTCS':
@@ -2330,30 +2364,35 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
             rho_lax = np.zeros((domain))
             moment_lax = np.zeros((domain))
             e_lax = np.zeros((domain))
-            if nx > 1:
-                rho_lax[idx_xx] = (np.roll(rho[idx_x], -1) + rho[idx_x] + np.roll(rho[idx_x], 1))/ 3.
-                moment_lax[idx_xx] = (np.roll(moment[idx_x], -1) + moment[idx_x] + np.roll(moment[idx_x], 1))/ 3.
-                e_lax[idx_xx] = (np.roll(e[idx_x], -1) + e[idx_x] + np.roll(e[idx_x], 1))/ 3.
-            if ny > 1:
-                rho_lax[idx_yy] = (np.roll(rho[idx_y], -1) + rho[idx_y] + np.roll(rho[idx_y], 1))/ 3.
-                moment_lax[idx_yy] = (np.roll(moment[idx_y], -1) + moment[idx_y] + np.roll(moment[idx_y], 1))/ 3.
-                e_lax[idx_yy] = (np.roll(e[idx_y], -1) + e[idx_y] + np.roll(e[idx_y], 1))/ 3.
-            if nz > 1:
-                rho_lax[idx_zz] = (np.roll(rho[idx_z], -1) + rho[idx_z] + np.roll(rho[idx_z], 1))/ 3.
-                moment_lax[idx_zz] = (np.roll(moment[idx_z], -1) + moment[idx_z] + np.roll(moment[idx_z], 1))/ 3.
-                e_lax[idx_zz] = (np.roll(e[idx_z], -1) + e[idx_z] + np.roll(e[idx_z], 1))/ 3.
+            for i in range(nx):
+                for j in range(ny):
+                    for k in range(nz):
+                        idx_xx, idx_yy, idx_zz, idx_x, idx_y, idx_z = get_idx(i, j, k, it)
+                        if nx > 1:
+                            rho_lax[idx_xx] = (np.roll(rho[idx_x], -1) + rho[idx_x] + np.roll(rho[idx_x], 1))/ 3.
+                            moment_lax[idx_xx] = (np.roll(moment[idx_x], -1) + moment[idx_x] + np.roll(moment[idx_x], 1))/ 3.
+                            e_lax[idx_xx] = (np.roll(e[idx_x], -1) + e[idx_x] + np.roll(e[idx_x], 1))/ 3.
+                        if ny > 1:
+                            rho_lax[idx_yy] = (np.roll(rho[idx_y], -1) + rho[idx_y] + np.roll(rho[idx_y], 1))/ 3.
+                            moment_lax[idx_yy] = (np.roll(moment[idx_y], -1) + moment[idx_y] + np.roll(moment[idx_y], 1))/ 3.
+                            e_lax[idx_yy] = (np.roll(e[idx_y], -1) + e[idx_y] + np.roll(e[idx_y], 1))/ 3.
+                        if nz > 1:
+                            rho_lax[idx_zz] = (np.roll(rho[idx_z], -1) + rho[idx_z] + np.roll(rho[idx_z], 1))/ 3.
+                            moment_lax[idx_zz] = (np.roll(moment[idx_z], -1) + moment[idx_z] + np.roll(moment[idx_z], 1))/ 3.
+                            e_lax[idx_zz] = (np.roll(e[idx_z], -1) + e[idx_z] + np.roll(e[idx_z], 1))/ 3.
                 
             rho_temp = rho_lax + rho_rhs*dt
             moment_temp = moment_lax + moment_rhs*dt
             e_temp = e_lax + e_rhs*dt
 
-        find_nan(rho_rhs, 'rho_rhs', i)
-        find_nan(rho[idx], 'rho[idx]', i)
-        find_nan(dt, 'dt', i)
+        find_nan(rho_rhs, 'rho_rhs', it)
+        find_nan(rho[idx], 'rho[idx]', it)
+        find_nan(dt, 'dt', it)
         if np.any(np.isnan(rho_temp)):
-            print(f'rho_temp nan at i: {i}')
+            print(f'rho_temp nan at i: {it}')
             return Pg, rho, moment, e, time
             
+        """
         # Boundary conditions TODO fix the else statement
         if nx > 1:
             if bnd_limits[1] > 0:  # up and centre
@@ -2391,18 +2430,25 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, u0, e0,
             rho[0, 0, :, i+1] = np.pad(rho_bc_z, bnd_limits, bnd_type)
             moment[0, 0, :, i+1] = np.pad(moment_bc_z, bnd_limits, bnd_type)
             e[0, 0, :, i+1] = np.pad(e_bc_z, bnd_limits, bnd_type)
+        """
+        rho[idx_next] = rho_temp
+        moment[idx_next] = moment_temp
+        e[idx_next] = e_temp
+
 
         if np.any(np.isnan(rho[idx_next])):
-            print(f'rho nan value i: {i}')
+            print(f'rho nan value i: {it}')
             return Pg, rho, moment, e, time
         #Pg_temp = (γ - 1) * e[idx_next]
+        Pg[idx_next] = (γ - 1)*e[idx_next]
+        """
         if nx > 1:
             Pg[:, 0, 0, i+1] = (γ - 1)*e[:, 0, 0, i+1]
         if ny > 1:
             Pg[0, :, 0, i+1] = (γ - 1)*e[0, :, 0, i+1]
         if nz > 1:
             Pg[0, 0, :, i+1] = (γ - 1)*e[0, 0, :, i+1]
-
-        time[i+1] = time[i] + dt
+        """
+        time[it+1] = time[it] + dt
 
     return Pg, rho, moment, e, time
