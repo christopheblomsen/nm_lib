@@ -2120,7 +2120,7 @@ def spatial_domain(nump, x0=-2.6, xf=2.6):
         ans = np.arange(nump)/(nump - 1) * (xf - x0) + x0
     return ans
 
-def animate_sod(x, P, rho, u, t):
+def animate_sod(x, P, rho, u, t, title):
     """
     Animates the sod solution
     """
@@ -2145,8 +2145,8 @@ def animate_sod(x, P, rho, u, t):
             axes[k].legend()
             axes[k].set_title(f't={t[i]:.2f} s')        
     
-    anim = FuncAnimation(fig, animate, interval=1, frames=(nt-1), init_func=init)
-    return anim
+    anim = FuncAnimation(fig, animate, interval=200, frames=(nt-1), init_func=init)
+    anim.save(f'{title}.mp4', writer='ffmpeg')
 
 """
 Sod above
@@ -2246,7 +2246,7 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
         uz[idx] = momentz[idx]/(rho[idx] + eps)
 
         # cfl condition
-        dt = calculate_dt(xx, yy, zz, ux, uy, uz, cs, eps, nx, ny, nz)
+        dt = calculate_dt(xx, yy, zz, ux[idx], uy[idx], uz[idx], cs, eps, nx, ny, nz)
         dt *= cfl_cut
         if dt < 0:
             print(f'dt negative: {it}')
@@ -2320,7 +2320,7 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
                     
                     rho_rhs[idx_zz] += -ddx(zz, momentz[idx_z])
             
-                    momentx_rhs[idx_zz] += -(ddx(zz, rho[idx_x]*ux[idx_z]*uz[idx_z]))
+                    momentx_rhs[idx_zz] += -(ddx(zz, rho[idx_z]*ux[idx_z]*uz[idx_z]))
                     momenty_rhs[idx_zz] += -(ddx(zz, rho[idx_z]*uy[idx_z]*uz[idx_z]))
                     momentz_rhs[idx_zz] += -(ddx(zz, momentz[idx_z]*uz[idx_z] + Pg[idx_z]))
                     
