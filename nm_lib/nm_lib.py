@@ -3,7 +3,8 @@
 """
 Created on Fri Jul 02 10:25:17 2021.
 
-@author: Juan Martinez Sykora
+@Supervisor: Juan Martinez Sykora
+@author: Christophe Kristian Blomsen
 """
 
 # import builtin modules
@@ -2145,7 +2146,7 @@ def animate_sod(x, P, rho, u, t, title):
             axes[k].legend()
             axes[k].set_title(f't={t[i]:.2f} s')        
     
-    anim = FuncAnimation(fig, animate, interval=200, frames=(nt-1), init_func=init)
+    anim = FuncAnimation(fig, animate, interval=10, frames=(nt-1), init_func=init)
     anim.save(f'{title}.mp4', writer='ffmpeg')
 
 """
@@ -2156,15 +2157,16 @@ solver below
 
 def calculate_dt(xx, yy, zz, ux, uy, uz, cs, eps, nx, ny, nz, debug=False):
     """
+    Calculates the dt according
     """
     u = np.sqrt(ux*ux + uy*uy + uz*uz)
     ans = []
     if nx > 1:
         ans.append(np.min(np.gradient(xx)) / np.max((np.abs(ux) + cs + eps)))
-    if nz > 1:
-        ans.append(np.min(np.gradient(zz)) / np.max((np.abs(uz) + cs + eps)))
     if ny > 1:
         ans.append(np.min(np.gradient(yy)) / np.max((np.abs(uy) + cs + eps)))
+    if nz > 1:
+        ans.append(np.min(np.gradient(zz)) / np.max((np.abs(uz) + cs + eps)))
     res = np.min(ans)
     if debug:
         print(f'max u : {np.max(u)}')
@@ -2179,7 +2181,35 @@ def find_nan(arr, title, i):
         print(f'{title} is nan at i: {i}')
         
 def init_array(domain, nt, P0, rho0, ux0, uy0, uz0, e0, γ=5/3):
-    # TODO make cases for nx = nz = 1 and so on
+    """
+    Initialises arrays in 4D in this style (x domain, y domain, z domain, time)
+    
+    Parameters
+    ----------
+    domain : `tuple`
+                Spatial domain
+    nt     :  `int`
+                timepoints
+    P0      : `array`
+                Initial pressure array
+    rho0    : `array`
+                Initial pressure array
+    ux0     : `array`
+                Initial velocity x array
+    uy0     : `array`
+                Initial velocity y array
+    uz0     : `array`
+                Initial velocity z array
+    e0      : `array`
+                Initial pressure array
+    γ       : `float`
+                Adiabatic gamma
+                Default 5/3
+    
+    Returns
+    -------
+    Initial conditions
+    """
     idx = (slice(None), slice(None), slice(None), 0)
 
     e = np.zeros((*domain, nt))
@@ -2204,26 +2234,62 @@ def init_array(domain, nt, P0, rho0, ux0, uy0, uz0, e0, γ=5/3):
 
     return Pg, e, momentx, momenty, momentz, rho, ux, uy, uz
 
-def get_idx(i, j, k, it):
-    idx_xx = (slice(None), j, k)
-    idx_yy = (i, slice(None), k)
-    idx_zz = (i, j, slice(None))
-    
-    idx_x = (slice(None), j, k, it)
-    idx_y = (i, slice(None), k, it)
-    idx_z = (i, j, slice(None), it)
-    
-    return idx_xx, idx_yy, idx_zz, idx_x, idx_y, idx_z
-
 def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
            γ=5/3, cfl_cut=0.2, ddx=lambda x, y: deriv_cent(x, y),
            method='FTCS', debug=False):
+    """
+    Solves the EOS
+    
+    Parameters
+    ----------
+    domain : `tuple`
+                Spatial domain
+    xx      : `array`
+                x spatial domain
+    yy      : `array`
+                y spatial domain
+    zz      : `array`
+                z spatial domain
+    nt     :  `int`
+                timepoints
+    P0      : `array`
+                Initial pressure array
+    rho0    : `array`
+                Initial pressure array
+    ux0     : `array`
+                Initial velocity x array
+    uy0     : `array`
+                Initial velocity y array
+    uz0     : `array`
+                Initial velocity z array
+    e0      : `array`
+                Initial pressure array
+    γ       : `float`
+                Adiabatic gamma
+                Default 5/3
+    cfl_cut : `float`
+                Default 0.2
+    ddx     : `function`
+                The numerical scheme for derivation
+                Default central scheme
+    method  : `string`
+                The numerical scheme for solving EOS
+                Default FTCS
+    debug   : `bool`
+                Used to get debug print statement
+                Default False
+    
+    Returns
+    -------
+    Arrays of the state for
+
+    Pg, rho, momentx, momenty, momentz, e and corresponding time
+    """
     nx, ny, nz = domain
     Pg, e, momentx, momenty, momentz, rho, ux, uy, uz = init_array(domain, nt, P0, rho0, ux0, uy0, uz0, e0, γ=γ)
     time = np.zeros(nt)
     eps = 1.e-10
-
-
+    
     for it in range(0, nt-1):
         idx = (slice(None), slice(None), slice(None), it)
         idx_next = (slice(None), slice(None), slice(None), it+1)
@@ -2281,7 +2347,7 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
         momentz_rhs = np.zeros((domain))
 
         e_rhs = np.zeros((domain))
-
+        
         # Split the operations into many if statements
         if nx > 1:
             for j in range(ny):
@@ -2333,8 +2399,8 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
             rho_temp = rho[idx] + rho_rhs*dt
             
             momentx_temp = momentx[idx] + momentx_rhs*dt
-            momenty_temp = momenty[idx] + momentx_rhs*dt
-            momentz_temp = momentz[idx] + momentx_rhs*dt
+            momenty_temp = momenty[idx] + momenty_rhs*dt
+            momentz_temp = momentz[idx] + momentz_rhs*dt
             
             e_temp = e[idx] + e_rhs*dt
 
@@ -2360,7 +2426,6 @@ def solver(domain, xx, yy, zz, nt, P0, rho0, ux0, uy0, uz0, e0,
                         momenty_lax[idx_xx] += (np.roll(momenty[idx_x], -1) + momenty[idx_x] + np.roll(momenty[idx_x], 1))/ 3.
                         momentz_lax[idx_xx] += (np.roll(momentz[idx_x], -1) + momentz[idx_x] + np.roll(momentz[idx_x], 1))/ 3.
                         
-
                         e_lax[idx_xx] += (np.roll(e[idx_x], -1) + e[idx_x] + np.roll(e[idx_x], 1))/ 3.
                         
             if ny > 1:
